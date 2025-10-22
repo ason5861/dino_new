@@ -1,0 +1,207 @@
+# cartoon_dino_en.py
+# Cute Cartoon Dino Game - English Version by Coding Whiz Lab❤️
+import pygame, random, sys, math
+
+# --- CONFIGURATION ---
+WIDTH, HEIGHT = 720, 280
+GROUND_Y = HEIGHT - 50
+FPS = 60
+
+# Colors
+SKY_TOP = (160, 210, 255)
+SKY_BOTTOM = (230, 245, 255)
+GRASS = (100, 200, 100)
+DIRT = (200, 150, 100)
+
+# Physics
+GRAVITY = 2000
+JUMP_VELOCITY = -800
+DUCK_SCALE = 0.55
+
+
+# --- PLAYER CLASS ---
+class Dino(pygame.sprite.Sprite):
+    def __init__(self, x, y):
+        super().__init__()
+        self.base_w, self.base_h = 46, 54
+        self.color = (80, 150, 255)
+        self.vel_y = 0
+        self.ducking = False
+        self.alive = True
+        self.make_image(self.base_w, self.base_h)
+        self.rect = self.image.get_rect(midbottom=(x, y))
+
+    def make_image(self, w, h):
+        """Create a rounded rectangle Dino."""
+        surf = pygame.Surface((w, h), pygame.SRCALPHA)
+        pygame.draw.rect(surf, self.color, (0, 0, w, h), border_radius=10)
+        pygame.draw.circle(surf, (255, 255, 255), (int(w * 0.7), int(h * 0.25)), 6)
+        pygame.draw.circle(surf, (0, 0, 0), (int(w * 0.7), int(h * 0.25)), 2)
+        self.image = surf
+
+    def update(self, dt, keys):
+        """Handle ducking, jumping, and gravity."""
+        self.ducking = keys[pygame.K_DOWN]
+        h = int(self.base_h * (DUCK_SCALE if self.ducking else 1))
+        w = int(self.base_w * (1.2 if self.ducking else 1))
+        self.make_image(w, h)
+        bottom = self.rect.bottom
+        self.rect.size = self.image.get_size()
+        self.rect.bottom = bottom
+
+        # Jump
+        if (keys[pygame.K_SPACE] or keys[pygame.K_UP]) and self.on_ground():
+            self.vel_y = JUMP_VELOCITY
+        self.vel_y += GRAVITY * dt
+        self.rect.y += int(self.vel_y * dt)
+        if self.rect.bottom >= GROUND_Y:
+            self.rect.bottom = GROUND_Y
+            self.vel_y = 0
+
+    def on_ground(self):
+        return self.rect.bottom >= GROUND_Y - 1
+
+
+# --- CLOUD CLASS ---
+class Cloud(pygame.sprite.Sprite):
+    def __init__(self):
+        super().__init__()
+        w, h = random.randint(50, 90), random.randint(20, 35)
+        self.image = pygame.Surface((w, h), pygame.SRCALPHA)
+        pygame.draw.ellipse(self.image, (255, 255, 255), (0, 0, w, h))
+        self.rect = self.image.get_rect(midleft=(WIDTH, random.randint(40, 100)))
+        self.speed = random.uniform(50, 80)
+
+    def update(self, dt):
+        self.rect.x -= int(self.speed * dt)
+        if self.rect.right < 0:
+            self.kill()
+
+
+# --- OBSTACLE CLASS ---
+class Cactus(pygame.sprite.Sprite):
+    def __init__(self, speed):
+        super().__init__()
+        w, h = random.choice([(18, 50), (25, 60), (14, 45)])
+        self.image = pygame.Surface((w, h), pygame.SRCALPHA)
+        pygame.draw.rect(self.image, (0, 180, 60), (0, 0, w, h), border_radius=5)
+        pygame.draw.circle(self.image, (0, 160, 50), (w // 2, 5), 5)
+        self.rect = self.image.get_rect(midbottom=(WIDTH + 50, GROUND_Y))
+        self.speed = speed
+
+    def update(self, dt):
+        self.rect.x -= int(self.speed * dt)
+        if self.rect.right < 0:
+            self.kill()
+
+
+# --- MAIN GAME CLASS ---
+class Game:
+    def __init__(self):
+        pygame.init()
+        self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
+        pygame.display.set_caption("Cute Dino Adventure 🌿")
+        self.clock = pygame.time.Clock()
+        self.font = pygame.font.SysFont("comic sans ms", 22)
+        self.bigfont = pygame.font.SysFont("comic sans ms", 36)
+        self.reset()
+
+    def reset(self):
+        self.score = 0
+        self.high = getattr(self, "high", 0)
+        self.speed = 250
+        self.dino = Dino(100, GROUND_Y)
+        self.obstacles = pygame.sprite.Group()
+        self.clouds = pygame.sprite.Group()
+        self.all_sprites = pygame.sprite.Group(self.dino)
+        self.spawn_timer = 0
+        self.cloud_timer = 0
+
+    def draw_background(self):
+        """Draw gradient sky, grass, and dirt."""
+        for y in range(HEIGHT):
+            ratio = y / HEIGHT
+            r = int(SKY_TOP[0] * (1 - ratio) + SKY_BOTTOM[0] * ratio)
+            g = int(SKY_TOP[1] * (1 - ratio) + SKY_BOTTOM[1] * ratio)
+            b = int(SKY_TOP[2] * (1 - ratio) + SKY_BOTTOM[2] * ratio)
+            pygame.draw.line(self.screen, (r, g, b), (0, y), (WIDTH, y))
+        pygame.draw.rect(self.screen, GRASS, (0, GROUND_Y - 10, WIDTH, 10))
+        pygame.draw.rect(self.screen, DIRT, (0, GROUND_Y, WIDTH, 60))
+
+    def draw_score(self):
+        txt = self.font.render(f"Score: {self.score:05d}", True, (50, 50, 50))
+        hi = self.font.render(f"HI: {self.high:05d}", True, (80, 80, 80))
+        self.screen.blit(txt, (WIDTH - 180, 10))
+        self.screen.blit(hi, (WIDTH - 180, 35))
+
+    def game_over(self):
+        over = self.bigfont.render("Game Over!", True, (255, 80, 80))
+        tip = self.font.render("Press [SPACE] to Restart", True, (0, 0, 0))
+        self.screen.blit(over, over.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 20)))
+        self.screen.blit(tip, tip.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 20)))
+        pygame.display.flip()
+        waiting = True
+        while waiting:
+            for e in pygame.event.get():
+                if e.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+                if e.type == pygame.KEYDOWN and e.key == pygame.K_SPACE:
+                    waiting = False
+            self.clock.tick(30)
+
+    def run(self):
+        """Main game loop."""
+        while True:
+            dt = self.clock.tick(FPS) / 1000.0
+            keys = pygame.key.get_pressed()
+
+            for e in pygame.event.get():
+                if e.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+
+            # Spawn clouds
+            self.cloud_timer += dt
+            if self.cloud_timer > random.uniform(1.2, 2.0):
+                self.cloud_timer = 0
+                self.clouds.add(Cloud())
+
+            # Spawn obstacles
+            self.spawn_timer += dt
+            if self.spawn_timer > random.uniform(1.0, 1.8):
+                self.spawn_timer = 0
+                cactus = Cactus(self.speed)
+                self.obstacles.add(cactus)
+                self.all_sprites.add(cactus)
+
+            # Update entities
+            self.dino.update(dt, keys)
+            self.clouds.update(dt)
+            self.obstacles.update(dt)
+
+            # Score and difficulty
+            self.score += int(80 * dt)
+            self.high = max(self.high, self.score)
+            self.speed = min(400, 250 + self.score // 150)
+
+            # Collision detection
+            if pygame.sprite.spritecollide(self.dino, self.obstacles, False, pygame.sprite.collide_rect):
+                self.dino.alive = False
+
+            # Draw everything
+            self.draw_background()
+            self.clouds.draw(self.screen)
+            self.all_sprites.draw(self.screen)
+            self.draw_score()
+            pygame.display.flip()
+
+            # Game over
+            if not self.dino.alive:
+                self.game_over()
+                self.reset()
+
+
+# --- ENTRY POINT ---
+if __name__ == "__main__":
+    Game().run()
